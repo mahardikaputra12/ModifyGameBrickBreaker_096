@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-BRICK BREAKER - EDISI MODIFIKASI (versi ringkas)
-Konsep PBO: Inheritance (semua objek turunan GameObject), Polymorphism
-(delete() di-override), Encapsulation (tiap kelas urus dirinya), Composition.
+BRICK BREAKER - EDISI MODIFIKASI
+Nama : Mahardika Putra Qohar
+NIM  : 20250140096
+Mata kuliah: Pemrograman Multiplatform
+
+Berjalan di Windows / macOS / Linux (Python + Tkinter, tanpa library tambahan).
+Struktur OOP: semua objek game turunan GameObject; delete()/move() di-override.
 Tiap fitur ditandai [FITUR n] dan dijelaskan di README.md
 """
 import json, math, os, random, time
