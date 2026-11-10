@@ -1,8 +1,8 @@
 # 🧱 Brick Breaker — Edisi Modifikasi
 
-Modifikasi game **Brick Breaker** bawaan (Python + Tkinter) dengan prinsip **PBO** dan 14 fitur baru.
+Modifikasi game **Brick Breaker** bawaan (Python + Tkinter) dengan prinsip **PM** dan 14 fitur baru.
 
-> **Nama / NIM:** `[isi di sini]`
+> **Nama / NIM:** `[Mahardika Putra Qohar / 20250140096]`
 
 ## ▶️ Cara Menjalankan
 
