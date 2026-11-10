@@ -906,4 +906,84 @@ class Game(tk.Frame):
                 self.powerups.remove(p)
                 p.delete()
 
-    
+    def apply_powerup(self, kind):
+        """Efek tiap power-up. Efek berwaktu disimpan di self.effects."""
+        self.sound.play('power')
+        self.add_score(25)
+        if kind == 'L':                          # Nyawa +1 (maks 5)
+            self.lives = min(self.lives + 1, 5)
+        elif kind == 'M':                        # Multi-Ball: tiap bola jadi 3
+            self.spawn_multiball()
+        elif kind == 'W':                        # Paddle Lebar (batalkan Sempit)
+            self.effects.pop('narrow', None)
+            self.effects['wide'] = EFFECT_FRAMES
+            self.paddle.set_width(Paddle.BASE_WIDTH * 1.6)
+        elif kind == 'N':                        # Paddle Sempit (power-up buruk)
+            self.effects.pop('wide', None)
+            self.effects['narrow'] = EFFECT_FRAMES
+            self.paddle.set_width(Paddle.BASE_WIDTH * 0.6)
+        elif kind == 'S':                        # Bola lambat
+            self.effects['slow'] = EFFECT_FRAMES
+        elif kind == 'F':                        # Fireball
+            self.effects['fire'] = EFFECT_FRAMES
+
+    def spawn_multiball(self):
+        """[FITUR #17] Multi-Ball: setiap bola aktif dipecah menjadi tiga."""
+        for ball in list(self.balls):
+            if ball.stuck:
+                continue
+            for angle in (-25, 25):
+                if len(self.balls) >= MAX_BALLS:
+                    return
+                clone = Ball(self.canvas, ball.x, ball.y, ball.speed)
+                clone.stuck = False
+                clone.dx, clone.dy = ball.dx, ball.dy
+                clone.rotate(angle)
+                self.balls.append(clone)
+
+    def update_effects(self, dt):
+        """Kurangi timer efek; kembalikan paddle bila Lebar/Sempit habis."""
+        for name in list(self.effects):
+            self.effects[name] -= dt
+            if self.effects[name] <= 0:
+                del self.effects[name]
+                if name in ('wide', 'narrow'):
+                    self.paddle.set_width(Paddle.BASE_WIDTH)
+        fire = 'fire' in self.effects
+        for ball in self.balls:
+            ball.set_fire(fire)
+
+    # --------------------------------------------------------- visual & HUD
+    def update_stars(self, dt):
+        """[FITUR #10] Gerakkan bintang ke bawah; muncul lagi di atas jika lewat."""
+        for s in self.stars:
+            s['y'] += s['speed'] * dt
+            if s['y'] > HEIGHT:
+                s['y'] = 0
+            x1 = s['x']
+            self.canvas.coords(s['item'], x1, s['y'], x1 + s['size'], s['y'] + s['size'])
+
+    def update_hud(self):
+        """[FITUR #8] Perbarui teks HUD setiap frame."""
+        c = self.canvas
+        c.itemconfig(self.hud_score, text='SKOR: %d' % self.score)
+        c.itemconfig(self.hud_high, text='REKOR: %d' % self.high_score)
+        c.itemconfig(self.hud_level, text='LEVEL %d / %d'
+                     % (self.level_index + 1, len(LEVELS)))
+        c.itemconfig(self.hud_lives, text='NYAWA: ' + '\u2665 ' * max(self.lives, 0))
+        names = {'wide': 'Paddle Lebar', 'narrow': 'Paddle Sempit',
+                 'slow': 'Bola Lambat', 'fire': 'Fireball'}
+        info = ['%s %ds' % (names[k], int(v / 60) + 1) for k, v in self.effects.items()]
+        c.itemconfig(self.hud_effects, text='   '.join(info))
+        mult = 1 + min(self.combo, 20) // 5
+        c.itemconfig(self.hud_combo,
+                     text=('COMBO %d  x%d' % (self.combo, mult)) if self.combo > 1 else '')
+        c.tag_raise('overlay')
+
+
+if __name__ == '__main__':
+    root = tk.Tk()
+    root.title('Brick Breaker - Ultimate Edition')
+    root.resizable(False, False)
+    game = Game(root)
+    game.mainloop()
