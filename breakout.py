@@ -802,4 +802,108 @@ class Game(tk.Frame):
             self.combo = 0                                          # [FITUR #15] reset combo
             self.sound.play('paddle')
 
+    def ball_brick_collision(self, ball):
+        """
+        [FITUR #2] Tabrakan lingkaran vs persegi: cari titik terdekat pada brick,
+        lalu tentukan pantulan horizontal/vertikal dari arah tumbukan.
+        [FITUR #13] Fireball menghancurkan brick tanpa memantul (kecuali baja).
+        """
+        r = ball.radius
+        for brick in self.bricks:
+            x1, y1, x2, y2 = brick.rect
+            nearest_x = clamp(ball.x, x1, x2)
+            nearest_y = clamp(ball.y, y1, y2)
+            dx, dy = ball.x - nearest_x, ball.y - nearest_y
+            if dx * dx + dy * dy > r * r:
+                continue
+
+            fire_pierce = ball.fire and not brick.unbreakable
+            if brick.unbreakable:
+                self.sound.play('steel')
+            elif brick.hit(brick.hits if ball.fire else 1):
+                self.destroy_brick(brick)
+            else:
+                self.combo += 1
+                self.add_score(5)
+                self.sound.play('brick')
+
+            if not fire_pierce:          # Pantulan normal
+                if dx == 0 and dy == 0:
+                    ball.dy = -ball.dy
+                elif abs(dx) > abs(dy):
+                    sign = 1 if dx > 0 else -1
+                    ball.dx = abs(ball.dx) * sign
+                    ball.x = nearest_x + sign * (r + 0.1)
+                else:
+                    sign = 1 if dy > 0 else -1
+                    ball.dy = abs(ball.dy) * sign
+                    ball.y = nearest_y + sign * (r + 0.1)
+            break                        # Satu brick per frame -> hindari pantul ganda
+
+    # ----------------------------------------------------- brick & skor & combo
+    def add_score(self, points):
+        self.score += points
+        if self.score > self.high_score:
+            self.high_score = self.score
+
+    def destroy_brick(self, brick):
+        """
+        [FITUR #15] Combo: hancurkan brick beruntun tanpa menyentuh paddle ->
+        pengali skor naik (x1, x2, x3 ... tiap 5 combo, maks x5).
+        [FITUR #11] Partikel; [FITUR #7] peluang drop power-up;
+        [FITUR #16] brick peledak memicu reaksi berantai.
+        """
+        if brick not in self.bricks:
+            return
+        self.bricks.remove(brick)
+        self.combo += 1
+        multiplier = 1 + min(self.combo, 20) // 5
+        self.add_score(brick.points * multiplier)
+        self.spawn_particles(brick.cx, brick.cy, brick.base_color, 14 if brick.explosive else 8)
+        brick.delete()
+        self.sound.play('explode' if brick.explosive else 'brick')
+        if random.random() < DROP_CHANCE:
+            self.spawn_powerup(brick.cx, brick.cy)
+        if brick.explosive:
+            self.explode(brick)
+
+    def explode(self, source):
+        """[FITUR #16] Ledakan: brick tetangga (radius 100px) ikut hancur (berantai)."""
+        self.spawn_particles(source.cx, source.cy, '#ffd166', 25)
+        for other in list(self.bricks):
+            if other.unbreakable:
+                continue
+            if math.hypot(other.cx - source.cx, other.cy - source.cy) <= 100:
+                self.destroy_brick(other)    # Rekursif -> brick peledak lain meledak
+
+    def spawn_particles(self, x, y, color, count):
+        for _ in range(count):
+            if len(self.particles) < 220:    # Batasi agar tidak berat
+                self.particles.append(Particle(self.canvas, x, y, color))
+
+    def update_particles(self, dt):
+        for p in list(self.particles):
+            if not p.update(dt):
+                p.delete()
+                self.particles.remove(p)
+
+    # ------------------------------------------------------------- power-up [#7]
+    def spawn_powerup(self, x, y):
+        kinds = list(POWERUP_WEIGHTS)
+        kind = random.choices(kinds, [POWERUP_WEIGHTS[k] for k in kinds])[0]
+        self.powerups.append(PowerUp(self.canvas, x, y, kind))
+
+    def update_powerups(self, dt):
+        x1, y1, x2, y2 = self.paddle.rect
+        for p in list(self.powerups):
+            p.update(dt)
+            px1, py1, px2, py2 = p.rect
+            if px2 >= x1 and px1 <= x2 and py2 >= y1 and py1 <= y2:   # Tertangkap
+                self.apply_powerup(p.kind)
+                self.powerups.remove(p)
+                p.delete()
+            elif p.y > HEIGHT + 20:                                    # Terlewat
+                self.powerups.remove(p)
+                p.delete()
+
     
