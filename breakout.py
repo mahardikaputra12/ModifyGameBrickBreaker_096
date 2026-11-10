@@ -1,171 +1,45 @@
 # -*- coding: utf-8 -*-
 """
-BRICK BREAKER ULTIMATE EDITION
-==============================
-Modifikasi besar dari game Brick Breaker bawaan (tkinter).
-
-Konsep PM yang dipakai:
-  - Inheritance   : Ball, Paddle, Brick, PowerUp, Particle -> turunan GameObject
-  - Polymorphism  : delete()/move() di-override oleh kelas turunan
-  - Encapsulation : tiap objek mengurus posisi, gambar, dan perilakunya sendiri
-  - Composition   : Game "memiliki" paddle, bola, brick, power-up, partikel
-
-Setiap fitur diberi tanda  [FITUR #n]  di komentar dan dijelaskan juga di README.md
+BRICK BREAKER - EDISI MODIFIKASI (versi ringkas)
+Konsep PBO: Inheritance (semua objek turunan GameObject), Polymorphism
+(delete() di-override), Encapsulation (tiap kelas urus dirinya), Composition.
+Tiap fitur ditandai [FITUR n] dan dijelaskan di README.md
 """
-
-import json
-import math
-import os
-import random
-import threading
-import time
+import json, math, os, random, time
 import tkinter as tk
 
-try:                       # [FITUR #18] Efek suara (hanya jalan di Windows)
-    import winsound
-except ImportError:        # Di Linux/Mac game tetap jalan tanpa suara
-    winsound = None
-
-# ----------------------------------------------------------------------------
-# KONSTANTA GLOBAL (mudah diubah untuk balancing game)
-# ----------------------------------------------------------------------------
-WIDTH, HEIGHT = 800, 600          # Ukuran jendela game (bawaan: 610 x 400)
-FRAME_MS = 16                     # ~60 FPS (bawaan: 50 ms = 20 FPS, patah-patah)
-TOP_WALL = 44                     # Batas atas area main (di bawah bar HUD)
-PADDLE_Y = HEIGHT - 50            # Posisi vertikal paddle
-PADDLE_SPEED = 10                 # Kecepatan paddle via keyboard (px/frame)
-MAX_BALL_SPEED = 11               # Batas kecepatan bola
-MAX_BALLS = 12                    # Batas jumlah bola saat Multi-Ball
-EFFECT_FRAMES = 600               # Durasi power-up (600 frame = ~10 detik)
-DROP_CHANCE = 0.18                # Peluang brick menjatuhkan power-up
-TRAIL_LEN = 6                     # Panjang jejak bola
-
-BRICK_W, BRICK_H, BRICK_GAP = 70, 22, 4
-BRICK_COLS = 10
-BRICK_LEFT = (WIDTH - (BRICK_COLS * (BRICK_W + BRICK_GAP) - BRICK_GAP)) / 2
-BRICK_TOP = 80
-
-BG_TOP, BG_BOTTOM = '#080a28', '#2a1050'     # Warna gradasi latar
-TRAIL_BG = '#1a1040'                          # Warna akhir jejak (menyatu dg latar)
-SAVE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                         'highscore.json')
-
-# [FITUR #6] Tipe brick: karakter pada pola level -> properti brick
-#   hits  : jumlah pukulan untuk hancur (-1 = tidak bisa dihancurkan)
-#   points: skor dasar
-BRICK_TYPES = {
-    '1': {'hits': 1, 'points': 10},                       # Merah (1x pukul)
-    '2': {'hits': 2, 'points': 20},                       # Biru  (2x pukul)
-    '3': {'hits': 3, 'points': 30},                       # Ungu  (3x pukul)
-    '#': {'hits': -1, 'points': 0},                       # Baja  (kebal)
-    'E': {'hits': 1, 'points': 40, 'explosive': True},    # Brick peledak
-}
-BRICK_COLORS = {1: '#e74c3c', 2: '#3498db', 3: '#8e44ad'}
-STEEL_COLOR, EXPLOSIVE_COLOR = '#7f8c8d', '#e67e22'
-
-# [FITUR #7] Daftar power-up: kode -> (label, warna, nama)
-POWERUPS = {
-    'W': ('W', '#2ecc71', 'Paddle Lebar'),
-    'M': ('M', '#f1c40f', 'Multi-Ball'),
-    'S': ('S', '#3498db', 'Bola Lambat'),
-    'F': ('F', '#e67e22', 'Fireball'),
-    'L': ('+', '#e74c3c', 'Nyawa +1'),
-    'N': ('N', '#8e44ad', 'Paddle Sempit (buruk!)'),
-}
-POWERUP_WEIGHTS = {'W': 25, 'M': 20, 'S': 18, 'F': 12, 'L': 6, 'N': 19}
-
-# [FITUR #5] Lima level dengan pola berbeda. '.' = kosong. Tiap baris 10 karakter.
-LEVELS = [
-    ['1111111111',
-     '1111111111',
-     '2222222222',
-     '1111111111'],
-
-    ['2121212121',
-     '1212121212',
-     '2121212121',
-     '1212121212'],
-
-    ['#.1.11.1.#',
-     '.2.2222.2.',
-     'E33333333E',
-     '.1.1111.1.'],
-
-    ['1E1E1E1E1E',
-     '2#2#2#2#2#',
-     '3333333333',
-     '#.#.#.#.#.',
-     '1111111111'],
-
-    ['3E222222E3',
-     '#31111113#',
-     '.22222222.',
-     'E1E1E1E1E1',
-     '3333333333'],
-]
-
-# [FITUR #18] Frekuensi (Hz) dan durasi (ms) tiap efek suara
-SOUNDS = {'wall': (300, 25), 'paddle': (440, 35), 'brick': (660, 35),
-          'steel': (200, 50), 'power': (880, 90), 'explode': (120, 150),
-          'lose': (150, 300), 'win': (1000, 250)}
+W, H, TOP = 800, 600, 44                      # Ukuran layar & batas atas area main
+SAVE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'highscore.json')
+BW, BH, GAP = 70, 22, 4                       # Ukuran brick & jarak antar brick
+LEFT = (W - (10 * (BW + GAP) - GAP)) / 2      # Posisi x brick pertama (rata tengah)
+COLORS = {1: '#e74c3c', 2: '#3498db', 3: '#8e44ad'}   # Warna sesuai sisa pukulan
+# [FITUR 4] Tipe brick: 1/2/3 = jumlah pukulan, # = baja (kebal), E = peledak
+HITS = {'1': 1, '2': 2, '3': 3, '#': -1, 'E': 1}
+# [FITUR 5] Power-up: W=paddle lebar, M=multi-ball, F=fireball, L=nyawa +1
+POWER = {'W': '#2ecc71', 'M': '#f1c40f', 'F': '#e67e22', 'L': '#e74c3c'}
+NAMES = {'wide': 'Paddle Lebar', 'fire': 'Fireball'}
+# [FITUR 3] Empat level dengan pola berbeda ('.' = kosong, tiap baris 10 karakter)
+LEVELS = [['1111111111', '1111111111', '2222222222', '1111111111'],
+          ['2121212121', '1212121212', '2121212121', '1212121212'],
+          ['#.1.11.1.#', '.2.2222.2.', 'E33333333E', '.1.1111.1.'],
+          ['3E222222E3', '#31111113#', '.22222222.', 'E1E1E1E1E1']]
 
 
-# ----------------------------------------------------------------------------
-# FUNGSI BANTU
-# ----------------------------------------------------------------------------
-def clamp(value, low, high):
-    """Membatasi nilai agar tetap di antara low dan high."""
-    return max(low, min(high, value))
+def mix(c1, c2, t):
+    """Campur dua warna hex (dipakai untuk gradasi & efek kilap)."""
+    a = [int(c1[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(c2[i:i + 2], 16) for i in (1, 3, 5)]
+    return '#%02x%02x%02x' % tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
 
-def hex_to_rgb(color):
-    color = color.lstrip('#')
-    return tuple(int(color[i:i + 2], 16) for i in (0, 2, 4))
+def clamp(v, lo, hi):
+    return max(lo, min(hi, v))
 
 
-def lerp_color(c1, c2, t):
-    """Campuran dua warna hex. t=0 -> c1, t=1 -> c2 (dipakai utk gradasi/jejak)."""
-    a, b = hex_to_rgb(c1), hex_to_rgb(c2)
-    mixed = [int(clamp(a[i] + (b[i] - a[i]) * t, 0, 255)) for i in range(3)]
-    return '#%02x%02x%02x' % tuple(mixed)
-
-
-# ----------------------------------------------------------------------------
-# [FITUR #18] EFEK SUARA
-# ----------------------------------------------------------------------------
-class Sound:
-    """Pemutar efek suara sederhana. Dijalankan di thread agar game tidak macet."""
-
-    def __init__(self):
-        self.enabled = True          # Bisa di-toggle dengan tombol M
-
-    def play(self, name):
-        if not self.enabled or winsound is None:
-            return
-        freq, dur = SOUNDS[name]
-        threading.Thread(target=self._beep, args=(freq, dur),
-                         daemon=True).start()
-
-    @staticmethod
-    def _beep(freq, dur):
-        try:
-            winsound.Beep(freq, dur)
-        except RuntimeError:
-            pass
-
-
-# ----------------------------------------------------------------------------
-# KELAS DASAR
-# ----------------------------------------------------------------------------
 class GameObject(object):
-    """Kelas induk semua objek di canvas (dipertahankan dari kode asli)."""
-
+    """Kelas induk semua objek di canvas."""
     def __init__(self, canvas, item):
-        self.canvas = canvas
-        self.item = item
-
-    def get_position(self):
-        return self.canvas.coords(self.item)
+        self.canvas, self.item = canvas, item
 
     def move(self, x, y):
         self.canvas.move(self.item, x, y)
@@ -174,218 +48,93 @@ class GameObject(object):
         self.canvas.delete(self.item)
 
 
-# ----------------------------------------------------------------------------
-# BOLA
-# ----------------------------------------------------------------------------
 class Ball(GameObject):
-    """
-    [FITUR #2]  Fisika bola baru: posisi float + vektor arah (dx, dy) + speed.
-    [FITUR #12] Jejak (trail) berwarna memudar di belakang bola.
-    [FITUR #13] Mode Fireball (bola api menembus brick).
-    """
+    """[FITUR 2] Bola dengan posisi float + vektor arah (dx, dy) + kecepatan."""
+    R = 8
 
     def __init__(self, canvas, x, y, speed):
-        self.radius = 8
-        self.x, self.y = x, y            # Posisi pusat (float, lebih halus)
-        self.speed = speed
-        self.dx, self.dy = 0.0, -1.0     # Arah (vektor satuan)
-        self.stuck = True                # Menempel di paddle sebelum diluncurkan
-        self.offset = 0                  # Jarak bola dari tengah paddle
-        self.fire = False
-        self.history = []                # Riwayat posisi untuk jejak
-        # Jejak dibuat DULU supaya tampil di belakang bola (urutan z-order)
-        self.trail = [canvas.create_oval(0, 0, 0, 0, fill='', outline='')
-                      for _ in range(TRAIL_LEN)]
-        item = canvas.create_oval(0, 0, 0, 0, fill='white',
-                                  outline='#9fd8ff', width=2)
-        super(Ball, self).__init__(canvas, item)
+        super(Ball, self).__init__(canvas, canvas.create_oval(0, 0, 0, 0, fill='white', outline='#9fd8ff', width=2))
+        self.x, self.y, self.speed = x, y, speed
+        self.dx, self.dy, self.stuck, self.fire = 0.0, -1.0, True, False
         self.render()
 
-    def set_angle(self, degrees):
-        """Atur arah bola (0 derajat = lurus ke atas, + = condong ke kanan)."""
-        rad = math.radians(degrees)
-        self.dx, self.dy = math.sin(rad), -math.cos(rad)
-
-    def rotate(self, degrees):
-        """Putar vektor arah (dipakai Multi-Ball untuk menyebar bola)."""
-        rad = math.radians(degrees)
-        c, s = math.cos(rad), math.sin(rad)
-        self.dx, self.dy = self.dx * c - self.dy * s, self.dx * s + self.dy * c
-
-    def set_fire(self, flag):
-        """Ganti tampilan bola antara normal dan Fireball."""
-        if flag != self.fire:
-            self.fire = flag
-            self.canvas.itemconfig(self.item,
-                                   fill='#ffb347' if flag else 'white',
-                                   outline='#ff4500' if flag else '#9fd8ff')
+    def set_angle(self, deg):
+        """0 derajat = lurus ke atas, positif = condong ke kanan."""
+        self.dx, self.dy = math.sin(math.radians(deg)), -math.cos(math.radians(deg))
 
     def render(self):
-        """Gambar ulang bola + jejaknya sesuai posisi terbaru."""
-        r = self.radius
-        self.canvas.coords(self.item, self.x - r, self.y - r,
-                           self.x + r, self.y + r)
-        self.history.append((self.x, self.y))
-        if len(self.history) > TRAIL_LEN + 1:
-            self.history.pop(0)
-        head = '#ff8c1a' if self.fire else '#bfe9ff'
-        last = len(self.history) - 1
-        for i, trail_item in enumerate(self.trail):
-            idx = last - 1 - i
-            if idx < 0:
-                self.canvas.coords(trail_item, 0, 0, 0, 0)
-                continue
-            hx, hy = self.history[idx]
-            rr = r * (1 - (i + 1) / (TRAIL_LEN + 2.0))     # Makin kecil
-            self.canvas.coords(trail_item, hx - rr, hy - rr, hx + rr, hy + rr)
-            self.canvas.itemconfig(
-                trail_item, fill=lerp_color(head, TRAIL_BG, (i + 1.0) / (TRAIL_LEN + 1)))
-
-    def delete(self):                    # Polymorphism: hapus bola + jejaknya
-        for t in self.trail:
-            self.canvas.delete(t)
-        super(Ball, self).delete()
+        r = self.R
+        self.canvas.coords(self.item, self.x - r, self.y - r, self.x + r, self.y + r)
+        self.canvas.itemconfig(self.item, fill='#ffb347' if self.fire else 'white')   # [FITUR 6] api
 
 
-# ----------------------------------------------------------------------------
-# PADDLE
-# ----------------------------------------------------------------------------
 class Paddle(GameObject):
-    """
-    [FITUR #3] Paddle dengan gerak mulus (keyboard + mouse) & lebar dinamis
-               (berubah karena power-up Lebar / Sempit).
-    """
-    BASE_WIDTH = 100
+    """[FITUR 5] Paddle dengan lebar dinamis (berubah oleh power-up W)."""
+    BASE = 100
 
-    def __init__(self, canvas, x, y):
-        self.width = Paddle.BASE_WIDTH
-        self.height = 14
-        self.x, self.y = x, y            # Pusat paddle
-        item = canvas.create_rectangle(0, 0, 0, 0, fill='#f1c40f',
-                                       outline='#fff3b0', width=2)
-        self.shine = canvas.create_rectangle(0, 0, 0, 0, fill='#fff3b0',
-                                             outline='')   # Kilap di atas paddle
-        super(Paddle, self).__init__(canvas, item)
-        self.render()
+    def __init__(self, canvas):
+        super(Paddle, self).__init__(canvas, canvas.create_rectangle(0, 0, 0, 0, fill='#f1c40f', outline='#fff3b0', width=2))
+        self.x, self.y, self.w = W / 2, H - 50, self.BASE
+        self.move_to(self.x)
 
     @property
     def rect(self):
-        w, h = self.width / 2, self.height / 2
-        return self.x - w, self.y - h, self.x + w, self.y + h
-
-    def render(self):
-        x1, y1, x2, y2 = self.rect
-        self.canvas.coords(self.item, x1, y1, x2, y2)
-        self.canvas.coords(self.shine, x1 + 6, y1 + 2, x2 - 6, y1 + 5)
+        return self.x - self.w / 2, self.y - 7, self.x + self.w / 2, self.y + 7
 
     def move_to(self, x):
-        """Pindahkan pusat paddle ke x (tidak boleh keluar layar)."""
-        self.x = clamp(x, self.width / 2, WIDTH - self.width / 2)
-        self.render()
-
-    def move_by(self, dx):
-        self.move_to(self.x + dx)
-
-    def set_width(self, width):
-        self.width = width
-        self.move_to(self.x)             # Pastikan tetap di dalam layar
-
-    def delete(self):
-        self.canvas.delete(self.shine)
-        super(Paddle, self).delete()
+        self.x = clamp(x, self.w / 2, W - self.w / 2)      # Tidak boleh keluar layar
+        self.canvas.coords(self.item, *self.rect)
 
 
-# ----------------------------------------------------------------------------
-# BRICK
-# ----------------------------------------------------------------------------
 class Brick(GameObject):
-    """
-    [FITUR #6] Beberapa tipe brick: 1/2/3 pukulan, baja (kebal), peledak.
-    Brick bertingkat berubah warna saat terkena pukulan.
-    """
+    """[FITUR 4] Brick bertingkat: berubah warna tiap kena, baja kebal, E meledak."""
 
     def __init__(self, canvas, x, y, kind):
-        cfg = BRICK_TYPES[kind]
-        self.kind = kind
-        self.hits = cfg['hits']
-        self.points = cfg['points']
-        self.explosive = cfg.get('explosive', False)
-        self.unbreakable = self.hits < 0
+        self.kind, self.hits = kind, HITS[kind]
         self.cx, self.cy = x, y
-        self.rect = (x - BRICK_W / 2, y - BRICK_H / 2,
-                     x + BRICK_W / 2, y + BRICK_H / 2)
-        x1, y1, x2, y2 = self.rect
-        color = self.current_color()
-        self.base_color = color          # Warna awal (untuk warna serpihan)
-        item = canvas.create_rectangle(x1, y1, x2, y2, fill=color,
-                                       outline=lerp_color(color, '#000000', 0.4),
-                                       width=2)
-        # Garis kilap tipis di bagian atas -> efek 3D
-        self.shine = canvas.create_rectangle(x1 + 3, y1 + 3, x2 - 3, y1 + 6,
-                                             fill=lerp_color(color, '#ffffff', 0.45),
-                                             outline='')
-        self.label = None
-        if self.explosive:               # Tanda seru pada brick peledak
-            self.label = canvas.create_text(x, y, text='!', fill='white',
-                                            font=('Arial', 12, 'bold'))
-        super(Brick, self).__init__(canvas, item)
+        self.rect = (x - BW / 2, y - BH / 2, x + BW / 2, y + BH / 2)
+        super(Brick, self).__init__(canvas, canvas.create_rectangle(*self.rect, width=2))
+        self.shine = canvas.create_rectangle(self.rect[0] + 3, self.rect[1] + 3,   # Kilap 3D
+                                             self.rect[2] - 3, self.rect[1] + 6, outline='')
+        self.paint()
+        self.base = self.color()
 
-    def current_color(self):
-        if self.unbreakable:
-            return STEEL_COLOR
-        if self.explosive:
-            return EXPLOSIVE_COLOR
-        return BRICK_COLORS[self.hits]
+    @property
+    def steel(self):
+        return self.kind == '#'
+
+    def color(self):
+        return '#7f8c8d' if self.steel else '#e67e22' if self.kind == 'E' else COLORS[self.hits]
+
+    def paint(self):
+        c = self.color()
+        self.canvas.itemconfig(self.item, fill=c, outline=mix(c, '#000000', 0.4))
+        self.canvas.itemconfig(self.shine, fill=mix(c, '#ffffff', 0.45))
 
     def hit(self, damage=1):
-        """Kurangi nyawa brick. Return True bila brick hancur."""
-        if self.unbreakable:
+        """Kurangi pukulan. True jika brick hancur."""
+        if self.steel:
             return False
         self.hits -= damage
-        if self.hits <= 0:
-            return True
-        color = self.current_color()      # Ganti warna sesuai sisa pukulan
-        self.canvas.itemconfig(self.item, fill=color,
-                               outline=lerp_color(color, '#000000', 0.4))
-        self.canvas.itemconfig(self.shine, fill=lerp_color(color, '#ffffff', 0.45))
-        return False
+        if self.hits > 0:
+            self.paint()
+        return self.hits <= 0
 
-    def delete(self):                    # Polymorphism: hapus semua bagian brick
+    def delete(self):                       # Polymorphism: hapus kilap juga
         self.canvas.delete(self.shine)
-        if self.label:
-            self.canvas.delete(self.label)
         super(Brick, self).delete()
 
 
-# ----------------------------------------------------------------------------
-# POWER-UP
-# ----------------------------------------------------------------------------
 class PowerUp(GameObject):
-    """[FITUR #7] Kapsul yang jatuh dari brick; tangkap dengan paddle."""
-    W, H = 40, 18
+    """[FITUR 5] Kapsul yang jatuh dari brick; tangkap dengan paddle."""
 
     def __init__(self, canvas, x, y, kind):
-        label, color, _ = POWERUPS[kind]
-        self.kind = kind
-        self.x, self.y = x, y
-        item = canvas.create_rectangle(x - self.W / 2, y - self.H / 2,
-                                       x + self.W / 2, y + self.H / 2,
-                                       fill=color, outline='white', width=2)
-        self.text = canvas.create_text(x, y, text=label, fill='white',
-                                       font=('Arial', 10, 'bold'))
-        super(PowerUp, self).__init__(canvas, item)
+        super(PowerUp, self).__init__(canvas, canvas.create_rectangle(x - 20, y - 9, x + 20, y + 9, fill=POWER[kind], outline='white', width=2))
+        self.text = canvas.create_text(x, y, text=kind, fill='white', font=('Arial', 10, 'bold'))
+        self.x, self.y, self.kind = x, y, kind
 
-    @property
-    def rect(self):
-        return (self.x - self.W / 2, self.y - self.H / 2,
-                self.x + self.W / 2, self.y + self.H / 2)
-
-    def update(self, dt):
-        self.move(0, 3 * dt)
-
-    def move(self, x, y):                # Polymorphism: gerakkan kapsul + hurufnya
-        self.x += x
-        self.y += y
+    def move(self, x, y):                   # Polymorphism: gerakkan kapsul + hurufnya
+        self.x, self.y = self.x + x, self.y + y
         self.canvas.move(self.item, x, y)
         self.canvas.move(self.text, x, y)
 
@@ -394,596 +143,320 @@ class PowerUp(GameObject):
         super(PowerUp, self).delete()
 
 
-# ----------------------------------------------------------------------------
-# PARTIKEL
-# ----------------------------------------------------------------------------
 class Particle(GameObject):
-    """[FITUR #11] Serpihan kecil saat brick hancur (efek ledakan)."""
+    """[FITUR 9] Serpihan kecil saat brick hancur, kena gravitasi lalu hilang."""
 
     def __init__(self, canvas, x, y, color):
-        size = random.uniform(2, 5)
-        item = canvas.create_rectangle(x - size, y - size, x + size, y + size,
-                                       fill=color, outline='')
-        super(Particle, self).__init__(canvas, item)
-        self.vx = random.uniform(-3.5, 3.5)
-        self.vy = random.uniform(-4.5, 1.0)
-        self.life = random.randint(25, 45)
+        s = random.uniform(2, 5)
+        super(Particle, self).__init__(canvas, canvas.create_rectangle(x - s, y - s, x + s, y + s, fill=color, outline=''))
+        self.vx, self.vy, self.life = random.uniform(-3.5, 3.5), random.uniform(-4.5, 1), random.randint(25, 45)
 
     def update(self, dt):
-        """Gerak + gravitasi. Return False bila umur partikel habis."""
         self.vy += 0.22 * dt
         self.move(self.vx * dt, self.vy * dt)
         self.life -= dt
         return self.life > 0
 
 
-# ----------------------------------------------------------------------------
-# GAME UTAMA
-# ----------------------------------------------------------------------------
 class Game(tk.Frame):
-    """
-    Mengatur seluruh alur game dengan state machine [FITUR #14]:
-      menu -> ready -> playing -> (levelclear -> ready ...) -> gameover / win
-      paused dapat disisipkan kapan saja saat ready/playing.
-    """
+    """[FITUR 12] State machine: menu -> ready -> playing -> levelclear -> gameover/win (+ paused)."""
 
     def __init__(self, master):
         super(Game, self).__init__(master)
-        self.master = master
-        self.canvas = tk.Canvas(self, width=WIDTH, height=HEIGHT,
-                                bg=BG_TOP, highlightthickness=0)
-        self.canvas.pack()
         self.pack()
+        self.canvas = tk.Canvas(self, width=W, height=H, bg='#080a28', highlightthickness=0)
+        self.canvas.pack()
+        self.high = self.load_high()
+        self.keys, self.state, self.prev = set(), 'menu', 'ready'
+        self.bricks, self.balls, self.powers, self.parts = [], [], [], []
+        self.score = self.level = self.combo = 0
+        self.lives, self.fx = 3, {}                        # fx = efek power-up aktif
+        for i in range(60):                                # [FITUR 8] Latar gradasi
+            self.canvas.create_rectangle(0, i * 10, W, i * 10 + 11, outline='',
+                                         fill=mix('#080a28', '#2a1050', i / 59.0))
+        self.canvas.create_rectangle(0, 0, W, TOP, fill='#0a0a23', outline='#4b4b9f', width=2)
+        f = ('Arial', 13, 'bold')                          # [FITUR 10] HUD
+        t = self.canvas.create_text
+        self.h_score, self.h_level = t(15, 14, anchor='w', fill='white', font=f), t(W / 2, 22, fill='#f1c40f', font=f)
+        self.h_high, self.h_lives = t(15, 32, anchor='w', fill='#aaaadd', font=('Arial', 9)), t(W - 15, 22, anchor='e', fill='#ff6b81', font=f)
+        self.h_fx, self.h_combo = t(12, H - 12, anchor='w', fill='#7fffd4', font=f), t(W - 12, H - 12, anchor='e', fill='#ffd166', font=f)
+        m = self.master                                    # [FITUR 11] Kontrol keyboard & mouse
+        m.bind('<KeyPress>', self.on_key)
+        m.bind('<KeyRelease>', lambda e: self.keys.discard(e.keysym.lower()))
+        self.canvas.bind('<Motion>', lambda e: self.paddle.move_to(e.x) if self.state in ('ready', 'playing') else None)
+        self.canvas.bind('<Button-1>', lambda e: self.action())
+        m.protocol('WM_DELETE_WINDOW', self.close)
+        self.paddle = Paddle(self.canvas)
+        self.overlay('BRICK BREAKER', ['SPASI / Klik = Mulai & luncurkan bola', 'Panah / A-D / Mouse = Gerak paddle',
+                                       'P = Pause    R = Restart', 'Rekor: %d' % self.high])
+        self.last = time.perf_counter()
+        self.loop()
 
-        self.sound = Sound()
-        self.high_score = self.load_high_score()     # [FITUR #9]
-        self.keys = set()                            # Tombol yang sedang ditekan
-        self.state = 'menu'
-        self.prev_state = 'ready'
+    # ---------------------------------------------------------------- input
+    def on_key(self, e):
+        k = e.keysym.lower()
+        self.keys.add(k)
+        if k == 'space':
+            self.action()
+        elif k == 'p':
+            self.pause()
+        elif k == 'r':
+            self.new_game()
 
-        self.score = 0
-        self.lives = 3
-        self.level_index = 0
-        self.combo = 0
-        self.effects = {}                # nama efek -> sisa frame
-        self.bricks, self.balls, self.powerups, self.particles = [], [], [], []
-        self.paddle = None
-
-        self.draw_background()           # [FITUR #10]
-        self.create_stars()              # [FITUR #10]
-        self.create_hud()                # [FITUR #8]
-        self.bind_inputs()               # [FITUR #3 & #14]
-        self.show_menu()
-
-        self.last_time = time.perf_counter()
-        self.game_loop()
-
-    # ------------------------------------------------------------------ setup
-    def draw_background(self):
-        """[FITUR #10] Latar gradasi (ungu tua -> biru gelap) dari 60 strip."""
-        strips = 60
-        h = HEIGHT / float(strips)
-        for i in range(strips):
-            color = lerp_color(BG_TOP, BG_BOTTOM, i / float(strips - 1))
-            self.canvas.create_rectangle(0, i * h, WIDTH, (i + 1) * h + 1,
-                                         fill=color, outline='')
-
-    def create_stars(self):
-        """[FITUR #10] Bintang parallax: yang kecil lambat, yang besar lebih cepat."""
-        self.stars = []
-        for _ in range(45):
-            size = random.choice([1, 1, 2, 2, 3])
-            x, y = random.uniform(0, WIDTH), random.uniform(0, HEIGHT)
-            shade = lerp_color('#555577', '#ffffff', size / 3.0)
-            item = self.canvas.create_oval(x, y, x + size, y + size,
-                                           fill=shade, outline='')
-            self.stars.append({'item': item, 'x': x, 'y': y, 'size': size,
-                               'speed': 0.15 * size})
-
-    def create_hud(self):
-        """[FITUR #8] HUD: skor, rekor, level, nyawa, combo, dan efek aktif."""
-        c = self.canvas
-        c.create_rectangle(0, 0, WIDTH, TOP_WALL, fill='#0a0a23',
-                           outline='#4b4b9f', width=2)
-        f = ('Arial', 13, 'bold')
-        self.hud_score = c.create_text(15, 14, anchor='w', fill='white', font=f)
-        self.hud_high = c.create_text(15, 32, anchor='w', fill='#aaaadd',
-                                      font=('Arial', 9))
-        self.hud_level = c.create_text(WIDTH / 2, TOP_WALL / 2, fill='#f1c40f', font=f)
-        self.hud_lives = c.create_text(WIDTH - 15, TOP_WALL / 2, anchor='e',
-                                       fill='#ff6b81', font=f)
-        self.hud_effects = c.create_text(12, HEIGHT - 12, anchor='w',
-                                         fill='#7fffd4', font=('Arial', 10, 'bold'))
-        self.hud_combo = c.create_text(WIDTH - 12, HEIGHT - 12, anchor='e',
-                                       fill='#ffd166', font=('Arial', 12, 'bold'))
-
-    def bind_inputs(self):
-        """[FITUR #3] Keyboard (panah / A-D) dan mouse; [FITUR #14] kontrol game."""
-        root = self.master
-        root.bind('<KeyPress>', self.on_key_press)
-        root.bind('<KeyRelease>', lambda e: self.keys.discard(e.keysym.lower()))
-        self.canvas.bind('<Motion>', self.on_mouse_move)
-        self.canvas.bind('<Button-1>', lambda e: self.on_action())
-        root.protocol('WM_DELETE_WINDOW', self.on_close)
-
-    # ------------------------------------------------------------------ input
-    def on_key_press(self, event):
-        key = event.keysym.lower()
-        self.keys.add(key)
-        if key == 'space':
-            self.on_action()
-        elif key == 'p':
-            self.toggle_pause()
-        elif key == 'r':
-            self.start_new_game()
-        elif key == 'm':                 # [FITUR #18] Mute / unmute
-            self.sound.enabled = not self.sound.enabled
-        elif key == 'escape':
-            self.go_to_menu()
-
-    def on_mouse_move(self, event):
-        if self.state in ('ready', 'playing') and self.paddle:
-            self.paddle.move_to(event.x)
-
-    def on_action(self):
-        """Tombol SPASI / klik kiri: aksinya tergantung state saat ini."""
+    def action(self):
+        """SPASI / klik: aksi tergantung state."""
         if self.state in ('menu', 'gameover', 'win'):
-            self.start_new_game()
+            self.new_game()
         elif self.state == 'ready':
-            self.launch_ball()
+            for b in self.balls:
+                b.stuck = False
+                b.set_angle(random.uniform(-20, 20))
+            self.state = 'playing'
+            self.canvas.delete('overlay')
         elif self.state == 'levelclear':
-            self.level_index += 1
+            self.level += 1
             self.load_level()
         elif self.state == 'paused':
-            self.toggle_pause()
+            self.pause()
 
-    def on_close(self):
-        self.save_high_score()
-        self.master.destroy()
+    def pause(self):
+        """[FITUR 12] Pause / lanjut."""
+        if self.state in ('ready', 'playing'):
+            self.prev, self.state = self.state, 'paused'
+            self.overlay('PAUSE', ['Tekan P atau SPASI untuk lanjut'], '#3498db')
+        elif self.state == 'paused':
+            self.state = self.prev
+            self.canvas.delete('overlay')
 
-    # ------------------------------------------------------- high score [#9]
-    def load_high_score(self):
-        """[FITUR #9] Baca rekor dari file JSON (jika ada)."""
+    # ----------------------------------------------------- rekor & tampilan
+    def load_high(self):
+        """[FITUR 13] Baca rekor dari highscore.json."""
         try:
-            with open(SAVE_FILE, 'r') as f:
-                return int(json.load(f).get('high_score', 0))
-        except (OSError, ValueError, AttributeError):
+            return int(json.load(open(SAVE))['high_score'])
+        except (OSError, ValueError, KeyError):
             return 0
 
-    def save_high_score(self):
-        """[FITUR #9] Simpan rekor ke file agar tidak hilang saat game ditutup."""
+    def close(self):
         try:
-            with open(SAVE_FILE, 'w') as f:
-                json.dump({'high_score': self.high_score}, f)
+            json.dump({'high_score': self.high}, open(SAVE, 'w'))   # [FITUR 13] Simpan rekor
         except OSError:
             pass
+        self.master.destroy()
 
-    # --------------------------------------------------------- overlay teks
-    def clear_overlay(self):
-        self.canvas.delete('overlay')
+    def overlay(self, title, lines, color='#f1c40f'):
+        """Panel pesan di tengah layar (menu, pause, game over...)."""
+        c, cx, cy, h = self.canvas, W / 2, H / 2 + 30, 90 + 26 * len(lines)
+        c.delete('overlay')
+        c.create_rectangle(cx - 300, cy - h / 2, cx + 300, cy + h / 2, fill='#10143a', outline=color, width=3, tags='overlay')
+        c.create_text(cx, cy - h / 2 + 40, text=title, fill=color, font=('Arial', 32, 'bold'), tags='overlay')
+        for i, s in enumerate(lines):
+            c.create_text(cx, cy - h / 2 + 85 + 26 * i, text=s, fill='white', font=('Arial', 13), tags='overlay')
 
-    def show_overlay(self, title, lines, color='#f1c40f'):
-        """Panel pesan di tengah layar (menu, pause, game over, dll)."""
-        self.clear_overlay()
-        cx, cy = WIDTH / 2, HEIGHT / 2 + 30
-        height = 90 + 26 * len(lines)
-        self.canvas.create_rectangle(cx - 300, cy - height / 2, cx + 300,
-                                     cy + height / 2, fill='#10143a',
-                                     outline=color, width=3, tags='overlay')
-        self.canvas.create_text(cx, cy - height / 2 + 40, text=title, fill=color,
-                                font=('Arial', 32, 'bold'), tags='overlay')
-        for i, line in enumerate(lines):
-            self.canvas.create_text(cx, cy - height / 2 + 85 + 26 * i, text=line,
-                                    fill='white', font=('Arial', 13),
-                                    tags='overlay')
+    # --------------------------------------------------------- alur game
+    def clear(self, *groups):
+        for g in groups:
+            for o in g:
+                o.delete()
+            del g[:]
 
-    def show_hint(self, text):
-        """Teks petunjuk kecil di bawah brick (tanpa panel)."""
-        self.clear_overlay()
-        self.canvas.create_text(WIDTH / 2, HEIGHT / 2 + 110, text=text,
-                                fill='white', font=('Arial', 16, 'bold'),
-                                tags='overlay')
-
-    def show_menu(self):
-        self.state = 'menu'
-        self.show_overlay('BRICK BREAKER', [
-            'SPASI / Klik = Mulai & Luncurkan bola',
-            'Panah / A-D / Mouse = Gerakkan paddle',
-            'P = Pause    R = Restart    M = Suara    Esc = Menu',
-            'Tangkap kapsul: W M S F + N',
-            'Rekor tertinggi: %d' % self.high_score])
-
-    def go_to_menu(self):
-        self.clear_objects()
-        self.show_menu()
-
-    # --------------------------------------------------------- alur permainan
-    def clear_objects(self):
-        for group in (self.bricks, self.balls, self.powerups, self.particles):
-            for obj in group:
-                obj.delete()
-            del group[:]
-
-    def start_new_game(self):
-        """Reset semua data lalu mulai dari level 1."""
-        self.clear_objects()
-        self.score, self.lives, self.level_index, self.combo = 0, 3, 0, 0
-        if self.paddle is None:
-            self.paddle = Paddle(self.canvas, WIDTH / 2, PADDLE_Y)
+    def new_game(self):
+        self.clear(self.bricks, self.balls, self.powers, self.parts)
+        self.score, self.lives, self.level = 0, 3, 0
         self.load_level()
 
     def load_level(self):
-        """[FITUR #5] Bangun brick dari pola LEVELS[level_index]."""
-        for b in self.bricks:
-            b.delete()
-        del self.bricks[:]
-        for r, row in enumerate(LEVELS[self.level_index]):
+        """[FITUR 3] Bangun brick dari pola teks LEVELS."""
+        self.clear(self.bricks, self.balls, self.powers)
+        for r, row in enumerate(LEVELS[self.level]):
             for c, ch in enumerate(row):
-                if ch == '.':
-                    continue
-                x = BRICK_LEFT + c * (BRICK_W + BRICK_GAP) + BRICK_W / 2
-                y = BRICK_TOP + r * (BRICK_H + BRICK_GAP) + BRICK_H / 2
-                self.bricks.append(Brick(self.canvas, x, y, ch))
+                if ch != '.':
+                    self.bricks.append(Brick(self.canvas, LEFT + c * (BW + GAP) + BW / 2, 80 + r * (BH + GAP) + BH / 2, ch))
         self.reset_round()
 
-    def base_speed(self):
-        """[FITUR #4] Kecepatan dasar bola naik tiap level (kesulitan progresif)."""
-        return min(6.0 + 0.6 * self.level_index, 9.5)
-
     def reset_round(self):
-        """Siapkan ronde baru: bola menempel di paddle, efek direset."""
-        for group in (self.balls, self.powerups):
-            for obj in group:
-                obj.delete()
-            del group[:]
-        self.effects.clear()
-        self.combo = 0
-        self.paddle.set_width(Paddle.BASE_WIDTH)
-        self.paddle.move_to(WIDTH / 2)
-        self.balls.append(Ball(self.canvas, self.paddle.x,
-                               PADDLE_Y - 20, self.base_speed()))
+        """Bola baru menempel di paddle; efek & combo direset."""
+        self.clear(self.balls, self.powers)
+        self.fx.clear()
+        self.combo, self.paddle.w = 0, Paddle.BASE
+        self.paddle.move_to(W / 2)
+        # [FITUR 1] Kecepatan awal bola naik tiap level (kesulitan progresif)
+        self.balls.append(Ball(self.canvas, self.paddle.x, self.paddle.y - 20, 6.0 + 0.7 * self.level))
         self.state = 'ready'
-        self.show_hint('LEVEL %d  -  Tekan SPASI untuk meluncurkan bola'
-                       % (self.level_index + 1))
-
-    def launch_ball(self):
-        """Lepaskan bola dari paddle dengan sudut acak kecil."""
-        for ball in self.balls:
-            if ball.stuck:
-                ball.stuck = False
-                ball.set_angle(random.uniform(-20, 20))
-        self.state = 'playing'
-        self.clear_overlay()
-        self.sound.play('paddle')
-
-    def toggle_pause(self):
-        """[FITUR #14] Pause / lanjut."""
-        if self.state in ('ready', 'playing'):
-            self.prev_state = self.state
-            self.state = 'paused'
-            self.show_overlay('PAUSE', ['Tekan P atau SPASI untuk lanjut'], '#3498db')
-        elif self.state == 'paused':
-            self.state = self.prev_state
-            self.clear_overlay()
-            if self.state == 'ready':
-                self.show_hint('Tekan SPASI untuk meluncurkan bola')
-
-    def lose_life(self):
-        """Semua bola jatuh: kurangi nyawa, reset combo."""
-        self.lives -= 1
-        self.combo = 0
-        self.sound.play('lose')
-        if self.lives <= 0:
-            self.finish('gameover')
-        else:
-            self.reset_round()
+        self.overlay('LEVEL %d' % (self.level + 1), ['Tekan SPASI untuk meluncurkan bola'], '#3498db')
 
     def finish(self, result):
-        """[FITUR #9] Akhir game (kalah / menang) + simpan rekor."""
+        self.clear(self.balls, self.powers)
         self.state = result
-        for group in (self.balls, self.powerups):
-            for obj in group:
-                obj.delete()
-            del group[:]
-        new_record = self.score >= self.high_score and self.score > 0
-        self.save_high_score()
-        lines = ['Skor akhir: %d' % self.score,
-                 'REKOR BARU!' if new_record else 'Rekor: %d' % self.high_score,
-                 'Tekan SPASI untuk main lagi']
-        if result == 'win':
-            self.sound.play('win')
-            self.show_overlay('KAMU MENANG!', lines, '#2ecc71')
-        else:
-            self.show_overlay('GAME OVER', lines, '#e74c3c')
-
-    def check_level_clear(self):
-        """Level selesai bila semua brick yang bisa hancur sudah habis."""
-        if self.state != 'playing' and self.state != 'ready':
-            return
-        if not all(b.unbreakable for b in self.bricks):
-            return
-        bonus = self.lives * 100         # Bonus sisa nyawa
-        self.add_score(bonus)
-        for group in (self.balls, self.powerups):
-            for obj in group:
-                obj.delete()
-            del group[:]
-        if self.level_index + 1 >= len(LEVELS):
-            self.finish('win')
-        else:
-            self.state = 'levelclear'
-            self.sound.play('win')
-            self.show_overlay('LEVEL %d SELESAI!' % (self.level_index + 1),
-                              ['Bonus nyawa: +%d' % bonus,
-                               'Tekan SPASI ke level berikutnya'], '#2ecc71')
+        try:
+            json.dump({'high_score': self.high}, open(SAVE, 'w'))
+        except OSError:
+            pass
+        lines = ['Skor akhir: %d' % self.score, 'Rekor: %d' % self.high, 'Tekan SPASI untuk main lagi']
+        self.overlay('KAMU MENANG!' if result == 'win' else 'GAME OVER', lines, '#2ecc71' if result == 'win' else '#e74c3c')
 
     # ------------------------------------------------------------ loop utama
-    def game_loop(self):
-        """
-        [FITUR #1] Game loop ~60 FPS berbasis delta-time: gerakan dikali dt
-        sehingga kecepatan tetap konsisten walau komputer lambat/cepat.
-        """
+    def loop(self):
+        """[FITUR 1] Game loop ~60 FPS berbasis delta-time (kecepatan konsisten di PC lambat/cepat)."""
         now = time.perf_counter()
-        dt = clamp((now - self.last_time) * 60.0, 0.1, 2.5)   # 1.0 = tepat 60 FPS
-        self.last_time = now
-
-        self.update_stars(dt)
+        dt = clamp((now - self.last) * 60.0, 0.1, 2.5)
+        self.last = now
         if self.state != 'paused':
-            self.update_particles(dt)
+            for p in list(self.parts):
+                if not p.update(dt):
+                    p.delete()
+                    self.parts.remove(p)
         if self.state in ('ready', 'playing'):
-            self.update_game(dt)
+            self.update(dt)
         self.update_hud()
-        self.after(FRAME_MS, self.game_loop)
+        self.after(16, self.loop)
 
-    def update_game(self, dt):
-        self.update_paddle(dt)
-        self.update_effects(dt)
-        for ball in list(self.balls):
-            if ball.stuck:               # Bola menempel & ikut paddle
-                ball.x = self.paddle.x + ball.offset
-                ball.y = self.paddle.rect[1] - ball.radius
-                ball.render()
-            elif not self.update_ball(ball, dt):
-                self.balls.remove(ball)  # Bola jatuh ke bawah
-                ball.delete()
-        self.update_powerups(dt)
-        self.check_level_clear()
-        if self.state == 'playing' and not self.balls:
-            self.lose_life()
+    def update(self, dt):
+        # Gerak paddle mulus dari status tombol
+        d = ('right' in self.keys or 'd' in self.keys) - ('left' in self.keys or 'a' in self.keys)
+        if d:
+            self.paddle.move_to(self.paddle.x + d * 10 * dt)
+        for k in list(self.fx):                            # Hitung mundur efek power-up
+            self.fx[k] -= dt
+            if self.fx[k] <= 0:
+                del self.fx[k]
+                if k == 'wide':
+                    self.paddle.w = Paddle.BASE
+                    self.paddle.move_to(self.paddle.x)
+        for b in list(self.balls):
+            b.fire = 'fire' in self.fx
+            if b.stuck:                                    # Bola ikut paddle sebelum diluncurkan
+                b.x, b.y = self.paddle.x, self.paddle.rect[1] - b.R
+            elif not self.update_ball(b, dt):
+                self.balls.remove(b)
+                b.delete()
+                continue
+            b.render()
+        self.update_powers(dt)
+        if all(b.steel for b in self.bricks):              # Level selesai (baja boleh sisa)
+            self.level_clear()
+        elif self.state == 'playing' and not self.balls:   # Semua bola jatuh
+            self.lives, self.combo = self.lives - 1, 0
+            self.finish('gameover') if self.lives <= 0 else self.reset_round()
 
-    def update_paddle(self, dt):
-        """[FITUR #3] Gerak paddle mulus berbasis status tombol (bukan key-repeat)."""
-        left = 'left' in self.keys or 'a' in self.keys
-        right = 'right' in self.keys or 'd' in self.keys
-        direction = (1 if right else 0) - (1 if left else 0)
-        if direction:
-            self.paddle.move_by(direction * PADDLE_SPEED * dt)
+    def level_clear(self):
+        self.add_score(self.lives * 100)                   # Bonus sisa nyawa
+        if self.level + 1 >= len(LEVELS):
+            self.finish('win')
+        else:
+            self.clear(self.balls, self.powers)
+            self.state = 'levelclear'
+            self.overlay('LEVEL SELESAI!', ['Bonus nyawa: +%d' % (self.lives * 100), 'Tekan SPASI untuk lanjut'], '#2ecc71')
 
-    # ------------------------------------------------------------- bola/fisika
-    def update_ball(self, ball, dt):
-        """Gerakkan satu bola. Return False jika bola jatuh keluar layar."""
-        speed = ball.speed * (0.65 if 'slow' in self.effects else 1.0)
-        ball.x += ball.dx * speed * dt
-        ball.y += ball.dy * speed * dt
-        r = ball.radius
-
-        # Pantulan dinding kiri/kanan/atas (posisi dikoreksi agar tak tembus)
-        if ball.x - r <= 0:
-            ball.x, ball.dx = r, abs(ball.dx)
-            self.sound.play('wall')
-        elif ball.x + r >= WIDTH:
-            ball.x, ball.dx = WIDTH - r, -abs(ball.dx)
-            self.sound.play('wall')
-        if ball.y - r <= TOP_WALL:
-            ball.y, ball.dy = TOP_WALL + r, abs(ball.dy)
-            self.sound.play('wall')
-
-        self.ball_paddle_collision(ball)
-        self.ball_brick_collision(ball)
-        ball.render()
-        return ball.y - r <= HEIGHT
-
-    def ball_paddle_collision(self, ball):
-        """
-        [FITUR #2] Sudut pantul bergantung pada BAGIAN paddle yang terkena:
-        tengah = lurus ke atas, pinggir = miring tajam (maks 65 derajat).
-        Pemain bisa mengarahkan bola -> game jauh lebih strategis.
-        """
-        if ball.dy <= 0:
-            return
+    # --------------------------------------------------------------- fisika
+    def update_ball(self, b, dt):
+        """Gerakkan bola, pantulkan di dinding/paddle/brick. False jika jatuh."""
+        b.x += b.dx * b.speed * dt
+        b.y += b.dy * b.speed * dt
+        r = b.R
+        if b.x - r <= 0 or b.x + r >= W:                   # Dinding kiri/kanan
+            b.dx = abs(b.dx) if b.x - r <= 0 else -abs(b.dx)
+            b.x = clamp(b.x, r, W - r)
+        if b.y - r <= TOP:                                 # Dinding atas
+            b.y, b.dy = TOP + r, abs(b.dy)
         x1, y1, x2, y2 = self.paddle.rect
-        r = ball.radius
-        if (x1 - r * 0.6 <= ball.x <= x2 + r * 0.6
-                and ball.y + r >= y1 and ball.y <= y2):
-            ball.y = y1 - r
-            rel = clamp((ball.x - self.paddle.x) / (self.paddle.width / 2.0), -1, 1)
-            ball.set_angle(rel * 65)
-            ball.speed = min(ball.speed + 0.05, MAX_BALL_SPEED)   # Makin lama makin cepat
-            self.combo = 0                                          # [FITUR #15] reset combo
-            self.sound.play('paddle')
-
-    def ball_brick_collision(self, ball):
-        """
-        [FITUR #2] Tabrakan lingkaran vs persegi: cari titik terdekat pada brick,
-        lalu tentukan pantulan horizontal/vertikal dari arah tumbukan.
-        [FITUR #13] Fireball menghancurkan brick tanpa memantul (kecuali baja).
-        """
-        r = ball.radius
-        for brick in self.bricks:
-            x1, y1, x2, y2 = brick.rect
-            nearest_x = clamp(ball.x, x1, x2)
-            nearest_y = clamp(ball.y, y1, y2)
-            dx, dy = ball.x - nearest_x, ball.y - nearest_y
+        if b.dy > 0 and x1 - r / 2 <= b.x <= x2 + r / 2 and y1 <= b.y + r and b.y <= y2:
+            # [FITUR 2] Sudut pantul bergantung bagian paddle: tengah = lurus, pinggir = miring (maks 65 derajat)
+            b.y = y1 - r
+            b.set_angle(clamp((b.x - self.paddle.x) / (self.paddle.w / 2.0), -1, 1) * 65)
+            b.speed = min(b.speed + 0.05, 11)              # Makin lama makin cepat
+            self.combo = 0                                 # Combo putus saat kena paddle
+        for k in self.bricks:                              # Tabrakan lingkaran vs persegi
+            nx, ny = clamp(b.x, k.rect[0], k.rect[2]), clamp(b.y, k.rect[1], k.rect[3])
+            dx, dy = b.x - nx, b.y - ny
             if dx * dx + dy * dy > r * r:
                 continue
-
-            fire_pierce = ball.fire and not brick.unbreakable
-            if brick.unbreakable:
-                self.sound.play('steel')
-            elif brick.hit(brick.hits if ball.fire else 1):
-                self.destroy_brick(brick)
-            else:
+            if k.hit(k.hits if b.fire else 1):
+                self.destroy(k)
+            elif not k.steel:
                 self.combo += 1
                 self.add_score(5)
-                self.sound.play('brick')
+            if b.fire and not k.steel:                     # [FITUR 6] Fireball menembus brick
+                break
+            if dx == 0 and dy == 0:
+                b.dy = -b.dy
+            elif abs(dx) > abs(dy):                        # Pantul horizontal (kena sisi samping)
+                s = 1 if dx > 0 else -1
+                b.dx, b.x = abs(b.dx) * s, nx + s * (r + 0.1)
+            else:                                          # Pantul vertikal (kena atas/bawah)
+                s = 1 if dy > 0 else -1
+                b.dy, b.y = abs(b.dy) * s, ny + s * (r + 0.1)
+            break                                          # Satu brick per frame
+        return b.y - r <= H
 
-            if not fire_pierce:          # Pantulan normal
-                if dx == 0 and dy == 0:
-                    ball.dy = -ball.dy
-                elif abs(dx) > abs(dy):
-                    sign = 1 if dx > 0 else -1
-                    ball.dx = abs(ball.dx) * sign
-                    ball.x = nearest_x + sign * (r + 0.1)
-                else:
-                    sign = 1 if dy > 0 else -1
-                    ball.dy = abs(ball.dy) * sign
-                    ball.y = nearest_y + sign * (r + 0.1)
-            break                        # Satu brick per frame -> hindari pantul ganda
+    def add_score(self, n):
+        self.score += n
+        self.high = max(self.high, self.score)
 
-    # ----------------------------------------------------- brick & skor & combo
-    def add_score(self, points):
-        self.score += points
-        if self.score > self.high_score:
-            self.high_score = self.score
-
-    def destroy_brick(self, brick):
+    def destroy(self, k):
         """
-        [FITUR #15] Combo: hancurkan brick beruntun tanpa menyentuh paddle ->
-        pengali skor naik (x1, x2, x3 ... tiap 5 combo, maks x5).
-        [FITUR #11] Partikel; [FITUR #7] peluang drop power-up;
-        [FITUR #16] brick peledak memicu reaksi berantai.
+        [FITUR 7] Combo: hancurkan brick beruntun tanpa kena paddle -> pengali skor (x2 tiap 5 combo, maks x5).
+        [FITUR 9] Partikel, [FITUR 5] peluang drop power-up, [FITUR 14] brick E meledak berantai.
         """
-        if brick not in self.bricks:
+        if k not in self.bricks:
             return
-        self.bricks.remove(brick)
+        self.bricks.remove(k)
         self.combo += 1
-        multiplier = 1 + min(self.combo, 20) // 5
-        self.add_score(brick.points * multiplier)
-        self.spawn_particles(brick.cx, brick.cy, brick.base_color, 14 if brick.explosive else 8)
-        brick.delete()
-        self.sound.play('explode' if brick.explosive else 'brick')
-        if random.random() < DROP_CHANCE:
-            self.spawn_powerup(brick.cx, brick.cy)
-        if brick.explosive:
-            self.explode(brick)
+        self.add_score({'1': 10, '2': 20, '3': 30, 'E': 40}[k.kind] * (1 + min(self.combo, 20) // 5))
+        for _ in range(16 if k.kind == 'E' else 8):
+            self.parts.append(Particle(self.canvas, k.cx, k.cy, k.base))
+        k.delete()
+        if random.random() < 0.18:
+            self.powers.append(PowerUp(self.canvas, k.cx, k.cy, random.choice('WWMMFL')))
+        if k.kind == 'E':                                  # Ledakan: brick radius 100px ikut hancur
+            for o in list(self.bricks):
+                if not o.steel and math.hypot(o.cx - k.cx, o.cy - k.cy) <= 100:
+                    self.destroy(o)
 
-    def explode(self, source):
-        """[FITUR #16] Ledakan: brick tetangga (radius 100px) ikut hancur (berantai)."""
-        self.spawn_particles(source.cx, source.cy, '#ffd166', 25)
-        for other in list(self.bricks):
-            if other.unbreakable:
-                continue
-            if math.hypot(other.cx - source.cx, other.cy - source.cy) <= 100:
-                self.destroy_brick(other)    # Rekursif -> brick peledak lain meledak
-
-    def spawn_particles(self, x, y, color, count):
-        for _ in range(count):
-            if len(self.particles) < 220:    # Batasi agar tidak berat
-                self.particles.append(Particle(self.canvas, x, y, color))
-
-    def update_particles(self, dt):
-        for p in list(self.particles):
-            if not p.update(dt):
-                p.delete()
-                self.particles.remove(p)
-
-    # ------------------------------------------------------------- power-up [#7]
-    def spawn_powerup(self, x, y):
-        kinds = list(POWERUP_WEIGHTS)
-        kind = random.choices(kinds, [POWERUP_WEIGHTS[k] for k in kinds])[0]
-        self.powerups.append(PowerUp(self.canvas, x, y, kind))
-
-    def update_powerups(self, dt):
+    # ------------------------------------------------------------- power-up
+    def update_powers(self, dt):
         x1, y1, x2, y2 = self.paddle.rect
-        for p in list(self.powerups):
-            p.update(dt)
-            px1, py1, px2, py2 = p.rect
-            if px2 >= x1 and px1 <= x2 and py2 >= y1 and py1 <= y2:   # Tertangkap
-                self.apply_powerup(p.kind)
-                self.powerups.remove(p)
+        for p in list(self.powers):
+            p.move(0, 3 * dt)
+            if p.x + 20 >= x1 and p.x - 20 <= x2 and p.y + 9 >= y1 and p.y - 9 <= y2:
+                self.apply(p.kind)
+                self.powers.remove(p)
                 p.delete()
-            elif p.y > HEIGHT + 20:                                    # Terlewat
-                self.powerups.remove(p)
+            elif p.y > H + 20:
+                self.powers.remove(p)
                 p.delete()
 
-    def apply_powerup(self, kind):
-        """Efek tiap power-up. Efek berwaktu disimpan di self.effects."""
-        self.sound.play('power')
+    def apply(self, kind):
         self.add_score(25)
-        if kind == 'L':                          # Nyawa +1 (maks 5)
+        if kind == 'L':                                    # Nyawa +1 (maks 5)
             self.lives = min(self.lives + 1, 5)
-        elif kind == 'M':                        # Multi-Ball: tiap bola jadi 3
-            self.spawn_multiball()
-        elif kind == 'W':                        # Paddle Lebar (batalkan Sempit)
-            self.effects.pop('narrow', None)
-            self.effects['wide'] = EFFECT_FRAMES
-            self.paddle.set_width(Paddle.BASE_WIDTH * 1.6)
-        elif kind == 'N':                        # Paddle Sempit (power-up buruk)
-            self.effects.pop('wide', None)
-            self.effects['narrow'] = EFFECT_FRAMES
-            self.paddle.set_width(Paddle.BASE_WIDTH * 0.6)
-        elif kind == 'S':                        # Bola lambat
-            self.effects['slow'] = EFFECT_FRAMES
-        elif kind == 'F':                        # Fireball
-            self.effects['fire'] = EFFECT_FRAMES
-
-    def spawn_multiball(self):
-        """[FITUR #17] Multi-Ball: setiap bola aktif dipecah menjadi tiga."""
-        for ball in list(self.balls):
-            if ball.stuck:
-                continue
-            for angle in (-25, 25):
-                if len(self.balls) >= MAX_BALLS:
-                    return
-                clone = Ball(self.canvas, ball.x, ball.y, ball.speed)
-                clone.stuck = False
-                clone.dx, clone.dy = ball.dx, ball.dy
-                clone.rotate(angle)
-                self.balls.append(clone)
-
-    def update_effects(self, dt):
-        """Kurangi timer efek; kembalikan paddle bila Lebar/Sempit habis."""
-        for name in list(self.effects):
-            self.effects[name] -= dt
-            if self.effects[name] <= 0:
-                del self.effects[name]
-                if name in ('wide', 'narrow'):
-                    self.paddle.set_width(Paddle.BASE_WIDTH)
-        fire = 'fire' in self.effects
-        for ball in self.balls:
-            ball.set_fire(fire)
-
-    # --------------------------------------------------------- visual & HUD
-    def update_stars(self, dt):
-        """[FITUR #10] Gerakkan bintang ke bawah; muncul lagi di atas jika lewat."""
-        for s in self.stars:
-            s['y'] += s['speed'] * dt
-            if s['y'] > HEIGHT:
-                s['y'] = 0
-            x1 = s['x']
-            self.canvas.coords(s['item'], x1, s['y'], x1 + s['size'], s['y'] + s['size'])
+        elif kind == 'W':                                  # Paddle lebar 10 detik
+            self.fx['wide'], self.paddle.w = 600, Paddle.BASE * 1.6
+            self.paddle.move_to(self.paddle.x)
+        elif kind == 'F':                                  # Fireball 10 detik
+            self.fx['fire'] = 600
+        elif kind == 'M':                                  # [FITUR 6] Multi-Ball: tiap bola jadi 3
+            for b in [b for b in self.balls if not b.stuck][:4]:
+                for a in (-25, 25):
+                    n = Ball(self.canvas, b.x, b.y, b.speed)
+                    n.stuck = False
+                    c, s = math.cos(math.radians(a)), math.sin(math.radians(a))
+                    n.dx, n.dy = b.dx * c - b.dy * s, b.dx * s + b.dy * c
+                    self.balls.append(n)
 
     def update_hud(self):
-        """[FITUR #8] Perbarui teks HUD setiap frame."""
-        c = self.canvas
-        c.itemconfig(self.hud_score, text='SKOR: %d' % self.score)
-        c.itemconfig(self.hud_high, text='REKOR: %d' % self.high_score)
-        c.itemconfig(self.hud_level, text='LEVEL %d / %d'
-                     % (self.level_index + 1, len(LEVELS)))
-        c.itemconfig(self.hud_lives, text='NYAWA: ' + '\u2665 ' * max(self.lives, 0))
-        names = {'wide': 'Paddle Lebar', 'narrow': 'Paddle Sempit',
-                 'slow': 'Bola Lambat', 'fire': 'Fireball'}
-        info = ['%s %ds' % (names[k], int(v / 60) + 1) for k, v in self.effects.items()]
-        c.itemconfig(self.hud_effects, text='   '.join(info))
-        mult = 1 + min(self.combo, 20) // 5
-        c.itemconfig(self.hud_combo,
-                     text=('COMBO %d  x%d' % (self.combo, mult)) if self.combo > 1 else '')
-        c.tag_raise('overlay')
+        """[FITUR 10] Perbarui HUD tiap frame."""
+        c = self.canvas.itemconfig
+        c(self.h_score, text='SKOR: %d' % self.score)
+        c(self.h_high, text='REKOR: %d' % self.high)
+        c(self.h_level, text='LEVEL %d / %d' % (self.level + 1, len(LEVELS)))
+        c(self.h_lives, text='NYAWA: ' + '\u2665 ' * self.lives)
+        c(self.h_fx, text='   '.join('%s %ds' % (NAMES[k], v / 60 + 1) for k, v in self.fx.items()))
+        c(self.h_combo, text='COMBO %d  x%d' % (self.combo, 1 + min(self.combo, 20) // 5) if self.combo > 1 else '')
+        self.canvas.tag_raise('overlay')
 
 
 if __name__ == '__main__':
     root = tk.Tk()
-    root.title('Brick Breaker - Ultimate Edition')
+    root.title('Brick Breaker - Edisi Modifikasi')
     root.resizable(False, False)
-    game = Game(root)
-    game.mainloop()
+    Game(root).mainloop()
